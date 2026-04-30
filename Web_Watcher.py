@@ -1,0 +1,158 @@
+import requests
+from bs4 import BeautifulSoup
+import mysql.connector
+import smtplib
+from email.mime.text import MIMEText
+import sys
+import os
+import time
+from dotenv import load_dotenv
+import threading
+import http.server
+import socketserver
+
+load_dotenv()
+
+def get_db_connection():
+    return mysql.connector.connect(
+        host=os.getenv("DB_HOST", "localhost"),
+        port = int(os.getenv("DB_PORT", 3306)),      
+        user=os.getenv("DB_USER", "root"),          
+        password=os.getenv("DB_PASSWORD"),           
+        database=os.getenv("DB_NAME", "web_watcher") 
+    )
+
+def init_db():
+    try:
+        temp_db = mysql.connector.connect(
+            host=os.getenv("DB_HOST", "localhost"),
+            user=os.getenv("DB_USER", "root"),
+            password=os.getenv("DB_PASSWORD")
+        )
+
+        temp_cursor = temp_db.cursor()
+        temp_cursor.execute("create database if not exists web_watcher")
+        temp_db.close()
+
+        db = get_db_connection()
+        cursor = db.cursor()
+        cursor.execute("create table if not exists price_logs (id int auto_increment primary key, store_name varchar(100), price decimal(10, 2), timestamp datetime default current_timestamp)")
+        cursor.execute("create table if not exists watchlist (id int auto_increment primary key, store_name varchar(100), url text, target_price decimal(10, 2), choice_code varchar(1))")
+
+        db.commit()
+        db.close()
+        print("✅ DB Init successful")
+
+    except Exception as e:
+        print(f"❌ DB Init failed: {e}")
+        sys.exit(1)
+
+def save_to_db(store_name, price):
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        cursor.execute("insert into price_logs (store_name, price) values (%s, %s)", (store_name, price))
+        db.commit()
+        db.close()
+
+    except Exception as e:
+        print(f"⚠️ Save to DB skipped: {e}")
+
+def send_notification(store_name, price, link):
+    user_email = os.getenv("EMAIL_USER")
+    app_pass = os.getenv("EMAIL_PASS")
+    msg = MIMEText(f"Price drop to ₹{price}!\nCheck it here: {link}", 'plain', 'utf-8')
+    msg['Subject'] = f"Price Drop Alert — {store_name}"
+    msg['From'], msg['To'] = user_email, user_email
+
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+            server.starttls()
+            server.login(user_email, app_pass)
+            server.send_message(msg)
+            print("✉️ Alert sent!")
+
+    except Exception as e:
+        print(f"❌ Email failed: {e}")
+
+def get_live_price(url, choice):
+    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
+    try:
+        res = requests.get(url, headers=headers, timeout=15)
+        soup = BeautifulSoup(res.content, 'html.parser')
+
+        if choice == '1':
+            boxes = soup.find_all("div", {"class": "v1zwn21l"})
+            for box in boxes:
+                try:
+                    return float(box.get_text().replace("₹", "").replace(",", "").strip())
+                except ValueError:
+                    continue
+            return None
+        
+        elif choice == '2': 
+            box = soup.find("span", {"class": "a-price-whole"})
+            return float(box.get_text().replace(",", "").replace(".", "").strip()) if box else None
+        
+        elif choice == '3': 
+            box = soup.find("strong", {"class": "pdp-price"})
+            return float("".join(filter(str.isdigit, box.get_text()))) if box else None
+        
+        elif choice == '4':
+            box = soup.find(string=lambda text: "₹" in text or "Rs." in text)
+            return float("".join(filter(str.isdigit, box))) if box else None
+        
+    except:
+        return None
+
+class SilentHandler(http.server.SimpleHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass
+    
+def start_dummy_server():
+    port = int(os.environ.get("PORT", 8080))
+    with socketserver.TCPServer(("", port), SilentHandler) as httpd:
+        httpd.serve_forever()
+
+if __name__ == "__main__":
+    threading.Thread(target=start_dummy_server, daemon=True).start()
+    print("🚀 Port 8080 opened for Render")
+    init_db()
+    args = sys.argv
+    if len(args) > 1 and args[1] == "add":
+        name, link, target, code = input("Name: "), input("Link: "), float(input("Target: ")), input("Store (1-4): ")
+
+        try:
+            db = get_db_connection()
+            cursor = db.cursor()
+            cursor.execute("insert into watchlist (store_name, url, target_price, choice_code) values (%s, %s, %s, %s)", (name, link, target, code))
+            db.commit()
+            db.close()
+            print("✅ Added to list.")
+
+        except:
+            print("❌ Add failed (Database error).")
+
+    else:
+        while True:
+            print("⏰ Starting price check cycle...")
+
+            try:
+                db = get_db_connection()
+                cursor = db.cursor(dictionary=True)
+                cursor.execute("select * from watchlist")
+                items = cursor.fetchall()
+                db.close()
+
+                for item in items:
+                    price = get_live_price(item['url'], item['choice_code'])
+                    if price:
+                        save_to_db(item['store_name'], price)
+                        if price <= item['target_price']:
+                            send_notification(item['store_name'], price, item['url'])
+
+            except Exception as e:
+                print(f"⚠️ Main cycle DB issue: {e}")
+            
+            print("😴 Sleeping for 1 hour...")
+            time.sleep(3600)
