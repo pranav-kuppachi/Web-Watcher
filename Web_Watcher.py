@@ -20,17 +20,17 @@ HTML = """
 <head>
     <title>Web Watcher</title>
     <style>
-
-        body {font-family: sans-serif;
-            max-width: 500px;
-            margin: 60px auto;
+        body { 
+            font-family: sans-serif; 
+            max-width: 500px; 
+            margin: 60px auto; 
             padding: 0 20px; 
             background: #0f0f0f; 
             color: #fff; 
         }
 
         h1 { 
-            color: #adff2f; 
+            color: #adff2f;
         }
 
         input, select { 
@@ -41,7 +41,7 @@ HTML = """
             border: 1px solid #333; 
             background: #1a1a1a; 
             color: #fff; 
-            box-sizing: border-box; 
+            box-sizing: border-box;
         }
 
         button { 
@@ -49,18 +49,19 @@ HTML = """
             padding: 12px; 
             background: #adff2f; 
             color: #000; 
-            font-weight: bold; border: none; 
+            font-weight: bold; 
+            border: none; 
             border-radius: 6px; 
             cursor: pointer; 
             margin-top: 10px;
         }
+
         .msg { 
             margin-top: 16px; 
             padding: 10px; 
             border-radius: 6px; 
-            background: #1a1a1a; 
+            background: #1a1a1a;
         }
-        
     </style>
 </head>
 <body>
@@ -118,7 +119,6 @@ def init_db():
         db.commit()
         db.close()
         print("✅ DB Init successful")
-
     except Exception as e:
         print(f"❌ DB Init failed: {e}")
         sys.exit(1)
@@ -130,12 +130,12 @@ def save_to_db(store_name, price):
         cursor.execute("insert into price_logs (store_name, price) values (%s, %s)", (store_name, price))
         db.commit()
         db.close()
-
     except Exception as e:
         print(f"⚠️ Save to DB skipped: {e}")
 
 def send_notification(store_name, price, link, email):
-    app_pass = os.getenv("EMAIL_PASS")
+    # ADDED: .replace(" ", "") ensures the 16-digit App Password works even if pasted with spaces
+    app_pass = os.getenv("EMAIL_PASS").replace(" ", "")
     sender = os.getenv("EMAIL_USER")
     msg = MIMEText(f"Price drop to ₹{price}!\nCheck it here: {link}", 'plain', 'utf-8')
     msg['Subject'] = f"Price Drop Alert — {store_name}"
@@ -147,10 +147,11 @@ def send_notification(store_name, price, link, email):
             server.starttls()
             server.login(sender, app_pass)
             server.send_message(msg)
-            print("✉️ Alert sent!")
-
+            print(f"✉️ Alert sent to {email}!")
+            return True
     except Exception as e:
         print(f"❌ Email failed: {e}")
+        return False
 
 def get_live_price(url, choice):
     headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
@@ -163,8 +164,7 @@ def get_live_price(url, choice):
             for box in boxes:
                 try:
                     return float(box.get_text().replace("₹", "").replace(",", "").strip())
-                except ValueError:
-                    continue
+                except ValueError: continue
             return None
 
         elif choice == '2':
@@ -174,7 +174,6 @@ def get_live_price(url, choice):
         elif choice == '3':
             box = soup.find("strong", {"class": "pdp-price"})
             return float("".join(filter(str.isdigit, box.get_text()))) if box else None
-
     except:
         return None
 
@@ -193,14 +192,12 @@ def add_item():
         db.close()
         print(f"✅ Added: {data['name']}")
         return {"message": f"✅ {data['name']} added! You'll get an email at {data['email']} when price drops below ₹{data['price']}."}
-
     except Exception as e:
         return {"message": f"❌ Failed to add: {e}"}
 
 def run_watcher():
     while True:
         print("⏰ Starting price check cycle...")
-
         try:
             db = get_db_connection()
             cursor = db.cursor(dictionary=True)
@@ -210,10 +207,24 @@ def run_watcher():
 
             for item in items:
                 price = get_live_price(item['url'], item['choice_code'])
+                # ADDED: Debug print to show current price in Render logs
+                print(f"🔍 Checked {item['store_name']}: Current Price = {price}, Target = {item['target_price']}")
+                
                 if price:
                     save_to_db(item['store_name'], price)
                     if price <= item['target_price']:
-                        send_notification(item['store_name'], price, item['url'], item['email'])
+                        print(f"🎯 Target hit! Attempting email...")
+                        sent = send_notification(item['store_name'], price, item['url'], item['email'])
+                        if sent:
+                            db2 = get_db_connection()
+                            cursor2 = db2.cursor()
+                            cursor2.execute("delete from watchlist where id = %s", (item['id'],))
+                            db2.commit()
+                            db2.close()
+                            print(f"🗑️ Removed {item['store_name']} from watchlist")
+                else:
+                    # ADDED: Error print for blocked scrapers
+                    print(f"⚠️ Could not fetch price for {item['store_name']}. Site might be blocking us.")
 
         except Exception as e:
             print(f"⚠️ Main cycle DB issue: {e}")
