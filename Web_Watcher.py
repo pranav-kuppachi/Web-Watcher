@@ -8,18 +8,105 @@ import os
 import time
 from dotenv import load_dotenv
 import threading
-import http.server
-import socketserver
+from flask import Flask, request, render_template_string
 
 load_dotenv()
+
+app = Flask(__name__)
+
+HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Web Watcher</title>
+    <style>
+
+        body {font-family: sans-serif;
+            max-width: 500px;
+            margin: 60px auto;
+            padding: 0 20px; 
+            background: #0f0f0f; 
+            color: #fff; 
+        }
+
+        h1 { 
+            color: #adff2f; 
+        }
+
+        input, select { 
+            width: 100%; 
+            padding: 10px; 
+            margin: 8px 0; 
+            border-radius: 6px; 
+            border: 1px solid #333; 
+            background: #1a1a1a; 
+            color: #fff; 
+            box-sizing: border-box; 
+        }
+
+        button { 
+            width: 100%; 
+            padding: 12px; 
+            background: #adff2f; 
+            color: #000; 
+            font-weight: bold; border: none; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            margin-top: 10px;
+        }
+        .msg { 
+            margin-top: 16px; 
+            padding: 10px; 
+            border-radius: 6px; 
+            background: #1a1a1a; 
+        }
+        
+    </style>
+</head>
+<body>
+    <h1>🔍 Web Watcher</h1>
+    <p>Track prices on Flipkart, Amazon and Myntra. Get email alerts when prices drop.</p>
+    <input type="text" id="name" placeholder="Item Name (e.g. Nike Air Max)" />
+    <input type="text" id="url" placeholder="Product URL" />
+    <input type="number" id="price" placeholder="Target Price (₹)" />
+    <select id="store">
+        <option value="1">Flipkart</option>
+        <option value="2">Amazon</option>
+        <option value="3">Myntra</option>
+    </select>
+    <input type="email" id="email" placeholder="Your Email" />
+    <button onclick="submit()">Add to Watchlist</button>
+    <div class="msg" id="msg" style="display:none"></div>
+    <script>
+        async function submit() {
+            const res = await fetch('/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: document.getElementById('name').value,
+                    url: document.getElementById('url').value,
+                    price: document.getElementById('price').value,
+                    store: document.getElementById('store').value,
+                    email: document.getElementById('email').value
+                })
+            });
+            const data = await res.json();
+            const msg = document.getElementById('msg');
+            msg.style.display = 'block';
+            msg.innerText = data.message;
+        }
+    </script>
+</body>
+</html>
+"""
 
 def get_db_connection():
     return mysql.connector.connect(
         host=os.getenv("DB_HOST", "localhost"),
-        port = int(os.getenv("DB_PORT", 3306)),      
-        user=os.getenv("DB_USER", "root"),          
-        password=os.getenv("DB_PASSWORD"),           
-        database=os.getenv("DB_NAME", "web_watcher") 
+        port=int(os.getenv("DB_PORT", 3306)),
+        user=os.getenv("DB_USER", "root"),
+        password=os.getenv("DB_PASSWORD"),
+        database=os.getenv("DB_NAME", "web_watcher")
     )
 
 def init_db():
@@ -27,7 +114,7 @@ def init_db():
         db = get_db_connection()
         cursor = db.cursor()
         cursor.execute("create table if not exists price_logs (id int auto_increment primary key, store_name varchar(100), price decimal(10, 2), timestamp datetime default current_timestamp)")
-        cursor.execute("create table if not exists watchlist (id int auto_increment primary key, store_name varchar(100), url text, target_price decimal(10, 2), choice_code varchar(1))")
+        cursor.execute("create table if not exists watchlist (id int auto_increment primary key, store_name varchar(100), url text, target_price decimal(10, 2), choice_code varchar(1), email varchar(100))")
         db.commit()
         db.close()
         print("✅ DB Init successful")
@@ -47,17 +134,18 @@ def save_to_db(store_name, price):
     except Exception as e:
         print(f"⚠️ Save to DB skipped: {e}")
 
-def send_notification(store_name, price, link):
-    user_email = os.getenv("EMAIL_USER")
+def send_notification(store_name, price, link, email):
     app_pass = os.getenv("EMAIL_PASS")
+    sender = os.getenv("EMAIL_USER")
     msg = MIMEText(f"Price drop to ₹{price}!\nCheck it here: {link}", 'plain', 'utf-8')
     msg['Subject'] = f"Price Drop Alert — {store_name}"
-    msg['From'], msg['To'] = user_email, user_email
+    msg['From'] = sender
+    msg['To'] = email
 
     try:
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
             server.starttls()
-            server.login(user_email, app_pass)
+            server.login(sender, app_pass)
             server.send_message(msg)
             print("✉️ Alert sent!")
 
@@ -78,70 +166,64 @@ def get_live_price(url, choice):
                 except ValueError:
                     continue
             return None
-        
-        elif choice == '2': 
+
+        elif choice == '2':
             box = soup.find("span", {"class": "a-price-whole"})
             return float(box.get_text().replace(",", "").replace(".", "").strip()) if box else None
-        
-        elif choice == '3': 
+
+        elif choice == '3':
             box = soup.find("strong", {"class": "pdp-price"})
             return float("".join(filter(str.isdigit, box.get_text()))) if box else None
-        
-        elif choice == '4':
-            box = soup.find(string=lambda text: "₹" in text or "Rs." in text)
-            return float("".join(filter(str.isdigit, box))) if box else None
-        
+
     except:
         return None
 
-class SilentHandler(http.server.SimpleHTTPRequestHandler):
-    def log_message(self, format, *args):
-        pass
-    
-def start_dummy_server():
-    port = int(os.environ.get("PORT", 8080))
-    with socketserver.TCPServer(("", port), SilentHandler) as httpd:
-        httpd.serve_forever()
+@app.route('/')
+def home():
+    return render_template_string(HTML)
 
-if __name__ == "__main__":
-    threading.Thread(target=start_dummy_server, daemon=True).start()
-    print("🚀 Port 8080 opened for Render")
-    init_db()
-    args = sys.argv
-    if len(args) > 1 and args[1] == "add":
-        name, link, target, code = input("Name: "), input("Link: "), float(input("Target: ")), input("Store (1-4): ")
+@app.route('/add', methods=['POST'])
+def add_item():
+    data = request.json
+    try:
+        db = get_db_connection()
+        cursor = db.cursor()
+        cursor.execute("insert into watchlist (store_name, url, target_price, choice_code, email) values (%s, %s, %s, %s, %s)", (data['name'], data['url'], float(data['price']), data['store'], data['email']))
+        db.commit()
+        db.close()
+        print(f"✅ Added: {data['name']}")
+        return {"message": f"✅ {data['name']} added! You'll get an email at {data['email']} when price drops below ₹{data['price']}."}
+
+    except Exception as e:
+        return {"message": f"❌ Failed to add: {e}"}
+
+def run_watcher():
+    while True:
+        print("⏰ Starting price check cycle...")
 
         try:
             db = get_db_connection()
-            cursor = db.cursor()
-            cursor.execute("insert into watchlist (store_name, url, target_price, choice_code) values (%s, %s, %s, %s)", (name, link, target, code))
-            db.commit()
+            cursor = db.cursor(dictionary=True)
+            cursor.execute("select * from watchlist")
+            items = cursor.fetchall()
             db.close()
-            print("✅ Added to list.")
 
-        except:
-            print("❌ Add failed (Database error).")
+            for item in items:
+                price = get_live_price(item['url'], item['choice_code'])
+                if price:
+                    save_to_db(item['store_name'], price)
+                    if price <= item['target_price']:
+                        send_notification(item['store_name'], price, item['url'], item['email'])
 
-    else:
-        while True:
-            print("⏰ Starting price check cycle...")
+        except Exception as e:
+            print(f"⚠️ Main cycle DB issue: {e}")
 
-            try:
-                db = get_db_connection()
-                cursor = db.cursor(dictionary=True)
-                cursor.execute("select * from watchlist")
-                items = cursor.fetchall()
-                db.close()
+        print("😴 Sleeping for 1 hour...")
+        time.sleep(3600)
 
-                for item in items:
-                    price = get_live_price(item['url'], item['choice_code'])
-                    if price:
-                        save_to_db(item['store_name'], price)
-                        if price <= item['target_price']:
-                            send_notification(item['store_name'], price, item['url'])
-
-            except Exception as e:
-                print(f"⚠️ Main cycle DB issue: {e}")
-            
-            print("😴 Sleeping for 1 hour...")
-            time.sleep(3600)
+if __name__ == "__main__":
+    init_db()
+    threading.Thread(target=run_watcher, daemon=True).start()
+    port = int(os.environ.get("PORT", 8080))
+    print(f"🚀 Flask server starting on port {port}")
+    app.run(host="0.0.0.0", port=port)
