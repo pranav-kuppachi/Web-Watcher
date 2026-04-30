@@ -24,21 +24,10 @@ def get_db_connection():
 
 def init_db():
     try:
-        temp_db = mysql.connector.connect(
-            host=os.getenv("DB_HOST", "localhost"),
-            user=os.getenv("DB_USER", "root"),
-            password=os.getenv("DB_PASSWORD")
-        )
-
-        temp_cursor = temp_db.cursor()
-        temp_cursor.execute("create database if not exists web_watcher")
-        temp_db.close()
-
         db = get_db_connection()
         cursor = db.cursor()
         cursor.execute("create table if not exists price_logs (id int auto_increment primary key, store_name varchar(100), price decimal(10, 2), timestamp datetime default current_timestamp)")
         cursor.execute("create table if not exists watchlist (id int auto_increment primary key, store_name varchar(100), url text, target_price decimal(10, 2), choice_code varchar(1))")
-
         db.commit()
         db.close()
         print("✅ DB Init successful")
