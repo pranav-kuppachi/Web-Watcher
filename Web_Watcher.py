@@ -135,7 +135,6 @@ def save_to_db(store_name, price):
         print(f"⚠️ Save to DB skipped: {e}")
 
 def send_notification(store_name, price, link, email):
-    # ADDED: .replace(" ", "") ensures the 16-digit App Password works even if pasted with spaces
     app_pass = os.getenv("EMAIL_PASS").replace(" ", "")
     sender = os.getenv("EMAIL_USER")
     msg = MIMEText(f"Price drop to ₹{price}!\nCheck it here: {link}", 'plain', 'utf-8')
@@ -144,8 +143,7 @@ def send_notification(store_name, price, link, email):
     msg['To'] = email
 
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
-            server.starttls()
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(sender, app_pass)
             server.send_message(msg)
             print(f"✉️ Alert sent to {email}!")
