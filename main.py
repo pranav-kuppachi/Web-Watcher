@@ -9,6 +9,8 @@ import time
 from dotenv import load_dotenv
 import threading
 from flask import Flask, request, render_template_string
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
 load_dotenv()
 
@@ -135,22 +137,19 @@ def save_to_db(store_name, price):
         print(f"⚠️ Save to DB skipped: {e}")
 
 def send_notification(store_name, price, link, email):
-    app_pass = os.getenv("EMAIL_PASS").replace(" ", "")
-    sender = os.getenv("EMAIL_USER")
-    msg = MIMEText(f"Price drop to ₹{price}!\nCheck it here: {link}", 'plain', 'utf-8')
-    msg['Subject'] = f"Price Drop Alert — {store_name}"
-    msg['From'] = sender
-    msg['To'] = email
+
+    msg = Mail(
+        from_email=os.getenv("EMAIL_USER"),
+        to_emails=email,
+        subject=f"Price Drop Alert — {store_name}",
+        plain_text_content=f"Price drop to ₹{price}!\nCheck it here: {link}"
+    )
 
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
-            server.ehlo()
-            server.starttls()
-            server.ehlo()
-            server.login(sender, app_pass)
-            server.send_message(msg)
-            print(f"✉️ Alert sent to {email}!")
-            return True
+        sg = SendGridAPIClient(os.getenv("SENDGRID_API_KEY"))
+        sg.send(msg)
+        print(f"✉️ Alert sent to {email}!")
+        return True
     except Exception as e:
         print(f"❌ Email failed: {e}")
         return False
