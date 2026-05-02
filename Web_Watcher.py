@@ -12,7 +12,7 @@ from flask import Flask, request, render_template_string
 
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(__name__) 
 
 HTML = """
 <!DOCTYPE html>
@@ -160,6 +160,7 @@ def get_live_price(url, choice):
     try:
         res = requests.get(scraper_url, timeout=60)
         soup = BeautifulSoup(res.content, 'html.parser')
+        print(f"📄 Response snippet: {res.text[:500]}")
 
         if choice == '1':
             boxes = soup.find_all("div", {"class": "v1zwn21l"})
