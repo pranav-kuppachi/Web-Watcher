@@ -62,6 +62,7 @@ HTML = """
             border-radius: 6px; 
             background: #1a1a1a;
         }
+
     </style>
 </head>
 <body>
