@@ -143,7 +143,10 @@ def send_notification(store_name, price, link, email):
     msg['To'] = email
 
     try:
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=30) as server:
+            server.ehlo()
+            server.starttls()
+            server.ehlo()
             server.login(sender, app_pass)
             server.send_message(msg)
             print(f"✉️ Alert sent to {email}!")
