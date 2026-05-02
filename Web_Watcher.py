@@ -155,12 +155,12 @@ def send_notification(store_name, price, link, email):
         return False
 
 def get_live_price(url, choice):
-    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"}
     api_key = os.getenv("SCRAPER_API_KEY")
     scraper_url = f"http://api.scraperapi.com?api_key={api_key}&url={url}"
     try:
-        res = requests.get(scraper_url, headers=headers, timeout=15)
+        res = requests.get(scraper_url, timeout=60)
         soup = BeautifulSoup(res.content, 'html.parser')
+
         if choice == '1':
             boxes = soup.find_all("div", {"class": "v1zwn21l"})
             for box in boxes:
