@@ -288,7 +288,7 @@ def send_notification(store_name, price, link, email):
     msg = Mail(
         from_email=os.getenv("EMAIL_USER"),
         to_emails=email,
-        subject=f"Price Drop Alert — {store_name}",
+        subject=f"Price Drop Alert - {store_name}",
         plain_text_content=f"Price drop to ₹{price}!\nCheck it here: {link}"
     )
     try:
