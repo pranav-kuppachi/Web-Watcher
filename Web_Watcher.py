@@ -156,9 +156,9 @@ def send_notification(store_name, price, link, email):
 
 def get_live_price(url, choice):
     api_key = os.getenv("SCRAPER_API_KEY")
-    scraper_url = f"http://api.scraperapi.com?api_key={api_key}&url={url}"
+    payload = {'api_key': api_key, 'url': url}
     try:
-        res = requests.get(scraper_url, timeout=60)
+        res = requests.get('https://api.scraperapi.com', params=payload, timeout=60)
         soup = BeautifulSoup(res.content, 'html.parser')
         print(f"📄 Response snippet: {res.text[:500]}")
 
