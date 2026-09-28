@@ -1,34 +1,157 @@
-Web Watcher 🔍 : An Automated 24/7 Price Tracking & Alert Engine
+# Web-Watcher
 
-Web Watcher is a robust data extraction tool designed to monitor price volatility across major e-commerce platforms (Amazon, Flipkart, Myntra). It automates the tedious process of manual tracking by utilizing multi-threaded scraping and real-time email notifications.
+Web-Watcher is an automated price monitoring system that tracks products on websites, stores their price information and sends email when target price is reached.
 
-Key Feature ⏰ :
-1. 24/7 Automated Monitoring: Runs continuously to capture price drops the moment they happen.
-2. Multi-Platform Support: Specialized scrapers for Amazon, Flipkart, and Myntra.
-3. Real-Time Alerts: Integrated with SendGrid SMTP to deliver instant email notifications.
-4. Data Persistence: Uses MySQL to store historical price data for trend analysis.
-5. Web Dashboard: A Flask-based interface to view tracked items and status at a glance.
+The project combines web scraping, database storage, scheduled monitoring and email notifications into a single application.
 
-Tech Stack 🛠️:
-1. Language: Python
-2. Scraping: BeautifulSoup4, Requests
-3. Backend: Flask (Web Server)
-4. Database: MySQL
-5. Notification: SendGrid API / SMTP
-6. Deployment: Render / GitHub Actions (CI/CD)
+## What It Does
 
-Architecture 🏗️:
-1. Extraction Layer: Python scripts utilize BeautifulSoup to parse HTML and extract specific price/availability selectors.
-2. Logic Layer: Compares current scraped price against the "Target Price" or "Last Known Price" stored in the database.
-3. Persistence Layer: All logs and price histories are committed to a relational MySQL schema.
-4. Notification Layer: If a price drop criteria is met, an asynchronous trigger sends an email via SendGrid.
+Instead of manually checking a product page over and over, Web-Watcher handles the monitoring automatically.
 
-Installation & Setup 📦
-1. Clone the repository:  git clone https://github.com/pranavkuppachi/web-watcher.git, cd web-watcher
-2. Install dependencies: pip install -r requirements.txt
-3. Create a .env file and add your credentials:
-   DB_HOST=your_host
-   DB_USER=your_user
-   DB_PASS=your_password
-   SENDGRID_API_KEY=your_key
-4. Run the application: python app.py
+The basic workflow is:
+
+```text
+Product URL
+     ↓
+Web Scraper
+     ↓
+Extract Product Information
+     ↓
+Store Price Data
+     ↓
+Compare With Previous Price
+     ↓
+Price Changed?
+   ↙       ↘
+ Yes        No
+ ↓           ↓
+Send Email   Continue Monitoring
+```
+
+## Features
+
+* **Automated Web Scraping** - Extract product information from monitored websites.
+* **Price Tracking** - Store and compare previous and current prices.
+* **Change Detection** - Identify when a product's price changes.
+* **Email Notifications** - Send alerts when tracked prices meet the target conditions.
+* **Database Storage** - Store product and price information using MySQL.
+* **Scheduled Monitoring** - Automatically check tracked products without requiring manual input.
+* **Web Interface** - Flask based interface for interacting with the application.
+* **Environment Variables** - Keep configuration and sensitive credentials outside the source code.
+* **Concurrent Monitoring** - Use threading to handle multiple monitoring tasks.
+
+## Tech Stack
+
+### Backend
+
+* Python
+* Flask
+
+### Web Scraping
+
+* BeautifulSoup
+* Requests
+
+### Database
+
+* MySQL
+
+### Notifications
+
+* SMTP / email service
+
+### Other
+
+* Threading
+* Environment variables
+* Git
+* CI/CD
+
+## How It Works
+
+### 1. Add a Product
+
+A product URL is added to the system along with the information required to identify its price.
+
+### 2. Scrape the Website
+
+The application sends a request to the target page and uses BeautifulSoup to extract the required product information.
+
+### 3. Store the Price
+
+The current price is stored in the database so that it can be compared with future checks.
+
+### 4. Monitor Changes
+
+The system periodically checks the product again and compares the newly extracted price with the stored value.
+
+### 5. Send a Notification
+
+When a relevant price change is detected, Web-Watcher sends an email notification.
+
+## Database
+
+MySQL is used to persist information instead of keeping the tracked data only in memory.
+
+This allows price information to survive application restarts and provides a history that can be used for comparison and tracking.
+
+## Running Locally
+
+### Prerequisites
+
+* Python 3
+* MySQL
+* pip
+
+Clone the repository:
+
+```bash
+git clone https://github.com/pranav-kuppachi/Web-Watcher.git
+cd Web-Watcher
+```
+
+Install the dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Create a `.env` file for the required configuration and credentials.
+
+Example:
+
+```env
+DB_HOST=localhost
+DB_USER=your_username
+DB_PASSWORD=your_password
+DB_NAME=web_watcher
+
+EMAIL_HOST=your_smtp_host
+EMAIL_PORT=your_smtp_port
+EMAIL_USER=your_email
+EMAIL_PASSWORD=your_password
+```
+
+Set up the required MySQL database and then start the Flask application.
+
+```bash
+python app.py
+```
+
+> The exact entry point and environment variable names should match the files currently present in the repository.
+
+## Project Structure
+
+```text
+Web-Watcher/
+├── ...
+├── requirements.txt
+└── ...
+```
+
+The application is separated into the scraping, application, database, and notification components.
+
+
+## License
+
+This project is for educational and portfolio purposes.
